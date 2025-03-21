@@ -150,7 +150,7 @@ test_dataloader = val_dataloader
 # training schedule
 num_iters = 40000
 train_cfg = dict(
-    type="IterBasedTrainLoop", max_iters=num_iters, val_interval=1000)
+    type="IterBasedTrainLoop", max_iters=num_iters, val_interval=5000)
 val_cfg = dict(type="TeacherStudentValLoop")
 test_cfg = dict(type="TestLoop")
 
@@ -169,8 +169,8 @@ default_hooks = dict(
     logger=dict(type="LoggerHook", interval=100, log_metric_by_epoch=False),
     checkpoint=dict(
         type="CheckpointHook",
-        interval=1000,
-        max_keep_ckpts=40,
+        interval=5000,
+        max_keep_ckpts=10,
         by_epoch=False,
     ),
 )

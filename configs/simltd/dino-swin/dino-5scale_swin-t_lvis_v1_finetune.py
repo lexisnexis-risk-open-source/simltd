@@ -110,11 +110,11 @@ labeled_dataset = _base_.labeled_dataset
 data_root = labeled_dataset.dataset.dataset.data_root
 METAINFO = dict(classes=data_root + CLASSES_FILE)
 labeled_dataset.dataset.dataset.metainfo = METAINFO
-labeled_dataset.dataset.dataset.ann_file = "annotations/lvis_v1_train_100shots.json"
+labeled_dataset.dataset.dataset.ann_file = "annotations/lvis_v1_train_seed1@30shots.json"
 
 train_dataloader = dict(
-    batch_size=2,
-    num_workers=2,
+    batch_size=1,
+    num_workers=1,
     dataset=labeled_dataset)
 val_dataloader = dict(
     batch_size=2,
@@ -124,9 +124,9 @@ val_dataloader = dict(
 test_dataloader = val_dataloader
 
 # training schedule
-num_iters = 80000
+num_iters = 50000
 train_cfg = dict(
-    type="IterBasedTrainLoop", max_iters=num_iters, val_interval=5000)
+    type="IterBasedTrainLoop", max_iters=num_iters, val_interval=10000)
 val_cfg = dict(type="ValLoop")
 test_cfg = dict(type="TestLoop")
 
@@ -135,7 +135,7 @@ optim_wrapper = dict(
     type="OptimWrapper",
     optimizer=dict(
         type="AdamW",
-        lr=5e-06,
+        lr=1e-05,
         weight_decay=0.0001),
     clip_grad=dict(max_norm=0.1, norm_type=2),
 )
@@ -145,7 +145,7 @@ param_scheduler = [
         begin=0,
         end=num_iters,
         by_epoch=False,
-        milestones=[75000],
+        milestones=[40000],
         gamma=0.1)
 ]
 log_processor = dict(by_epoch=False)
@@ -160,4 +160,4 @@ default_hooks = dict(
 )
 resume = False
 load_from = "results/dino-swin/dino-5scale_swin-t_lvis_v1_head866/model_reset_combine.pth"
-work_dir = "work_dirs/dino-swin/dino-5scale_swin-t_lvis_v1_finetune/100shots/"
+work_dir = "work_dirs/dino-swin/dino-5scale_swin-t_lvis_v1_finetune/30shots/seed1/"
