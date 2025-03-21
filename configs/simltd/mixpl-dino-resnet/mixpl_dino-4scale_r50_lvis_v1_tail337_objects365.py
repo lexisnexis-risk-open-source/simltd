@@ -168,5 +168,5 @@ default_hooks = dict(
     ),
 )
 resume = False
-load_from = "results/dino-resnet/mixpl_dino-4scale_r50_lvis_v1_head866_objects365/model_reset_remove.pth"
-work_dir = "work_dirs/dino-resnet/mixpl_dino-4scale_r50_lvis_v1_tail337_objects365/"
+load_from = "results/mixpl-dino-resnet/mixpl_dino-4scale_r50_lvis_v1_head866_objects365/model_reset_remove.pth"
+work_dir = "work_dirs/mixpl-dino-resnet/mixpl_dino-4scale_r50_lvis_v1_tail337_objects365/"

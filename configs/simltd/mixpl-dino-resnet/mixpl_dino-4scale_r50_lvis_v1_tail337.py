@@ -1,16 +1,15 @@
 _base_ = [
     "../../../configs/_base_/default_runtime.py",
-    "../base/supervised_lvis_detection.py"
+    "../base/semi_supervised_lvis_detection.py"
 ]
 
-CLASSES_FILE = "annotations/lvis_v1_all_classes1203.txt"
+CLASSES_FILE = "annotations/lvis_v1_tail_classes337.txt"
 pretrained = "https://download.pytorch.org/models/resnet50-11ad3fa6.pth"
 
-model = dict(
+detector = dict(
     type="DINO",
     freeze_exceptions=[
         "bbox_head.cls_branches",
-        "bbox_head.reg_branches",
         "dn_query_generator.label_embedding"
     ],
     num_queries=900,
@@ -69,7 +68,7 @@ model = dict(
         temperature=20),
     bbox_head=dict(
         type="DINOHead",
-        num_classes=1203,
+        num_classes=337,
         sync_cls_avg_factor=True,
         loss_cls=dict(
             type="FocalLoss",
@@ -95,16 +94,41 @@ model = dict(
             ])),
     test_cfg=dict(max_per_img=300)) # LVIS allows up to 300
 
+model = dict(
+    type="MixPL",
+    detector=detector,
+    data_preprocessor=dict(
+        type="MultiBranchDataPreprocessor",
+        data_preprocessor=detector["data_preprocessor"]),
+    semi_train_cfg=dict(
+        least_num=1,
+        cache_size=8,
+        mixup=True,
+        mosaic=True,
+        mosaic_shape=[(400, 400), (800, 800)],
+        mosaic_weight=0.5,
+        erase=True,
+        erase_patches=(1, 20),
+        erase_ratio=(0, 0.1),
+        erase_thr=0.7,
+        cls_pseudo_thr=0.4,
+        freeze_teacher=True,
+        sup_weight=1.0,
+        unsup_weight=2.0,
+        min_pseudo_bbox_wh=(1e-2, 1e-2)),
+    semi_test_cfg=dict(predict_on="teacher"))
+
 labeled_dataset = _base_.labeled_dataset
+unlabeled_dataset = _base_.unlabeled_dataset
 data_root = labeled_dataset.dataset.dataset.data_root
 METAINFO = dict(classes=data_root + CLASSES_FILE)
 labeled_dataset.dataset.dataset.metainfo = METAINFO
-labeled_dataset.dataset.dataset.ann_file = "annotations/lvis_v1_train_seed1@30shots.json"
 
 train_dataloader = dict(
-    batch_size=1,
-    num_workers=1,
-    dataset=labeled_dataset)
+    batch_size=6,
+    num_workers=2,
+    sampler=dict(batch_size=6, source_ratio=[2, 4]),
+    dataset=dict(datasets=[labeled_dataset, unlabeled_dataset]))
 val_dataloader = dict(
     batch_size=2,
     num_workers=2,
@@ -112,10 +136,11 @@ val_dataloader = dict(
 )
 test_dataloader = val_dataloader
 
-num_iters = 80000
+# training schedule
+num_iters = 40000
 train_cfg = dict(
-    type="IterBasedTrainLoop", max_iters=num_iters, val_interval=10000)
-val_cfg = dict(type="ValLoop")
+    type="IterBasedTrainLoop", max_iters=num_iters, val_interval=5000)
+val_cfg = dict(type="TeacherStudentValLoop")
 test_cfg = dict(type="TestLoop")
 
 # optimizer
@@ -123,29 +148,21 @@ optim_wrapper = dict(
     type="OptimWrapper",
     optimizer=dict(
         type="AdamW",
-        lr=1e-06,
+        lr=0.0001,
         weight_decay=0.0001),
     clip_grad=dict(max_norm=0.1, norm_type=2),
 )
-param_scheduler = [
-    dict(
-        type="MultiStepLR",
-        begin=0,
-        end=num_iters,
-        by_epoch=False,
-        milestones=[70000],
-        gamma=0.5)
-]
 log_processor = dict(by_epoch=False)
+custom_hooks = [dict(type="MeanTeacherHook", momentum=0.0002, gamma=4)]
 default_hooks = dict(
     logger=dict(type="LoggerHook", interval=100, log_metric_by_epoch=False),
     checkpoint=dict(
         type="CheckpointHook",
-        interval=2000,
-        max_keep_ckpts=1,
+        interval=5000,
+        max_keep_ckpts=10,
         by_epoch=False,
     ),
 )
 resume = False
-load_from = "results/dino-resnet/mixpl_dino-4scale_r50_lvis_v1_head866_objects365/model_reset_combine.pth"
-work_dir = "work_dirs/dino-resnet/dino-4scale_r50_lvis_v1_finetune_objects365/30shots/seed1/"
+load_from = "results/mixpl-dino-resnet/mixpl_dino-4scale_r50_lvis_v1_head866/model_reset_remove.pth"
+work_dir = "work_dirs/mixpl-dino-resnet/mixpl_dino-4scale_r50_lvis_v1_tail337/"

@@ -112,7 +112,7 @@ val_dataloader = dict(
 )
 test_dataloader = val_dataloader
 
-num_iters = 80000
+num_iters = 50000
 train_cfg = dict(
     type="IterBasedTrainLoop", max_iters=num_iters, val_interval=10000)
 val_cfg = dict(type="ValLoop")
@@ -123,7 +123,7 @@ optim_wrapper = dict(
     type="OptimWrapper",
     optimizer=dict(
         type="AdamW",
-        lr=1e-06,
+        lr=5e-06,
         weight_decay=0.0001),
     clip_grad=dict(max_norm=0.1, norm_type=2),
 )
@@ -133,8 +133,8 @@ param_scheduler = [
         begin=0,
         end=num_iters,
         by_epoch=False,
-        milestones=[70000],
-        gamma=0.5)
+        milestones=[40000],
+        gamma=0.1)
 ]
 log_processor = dict(by_epoch=False)
 default_hooks = dict(
@@ -147,5 +147,5 @@ default_hooks = dict(
     ),
 )
 resume = False
-load_from = "results/dino-resnet/mixpl_dino-4scale_r50_lvis_v1_head866/model_reset_combine.pth"
-work_dir = "work_dirs/dino-resnet/dino-4scale_r50_lvis_v1_finetune/30shots/seed1/"
+load_from = "results/mixpl-dino-resnet/mixpl_dino-4scale_r50_lvis_v1_head866/model_reset_combine.pth"
+work_dir = "work_dirs/mixpl-dino-resnet/dino-4scale_r50_lvis_v1_finetune/30shots/seed1/"

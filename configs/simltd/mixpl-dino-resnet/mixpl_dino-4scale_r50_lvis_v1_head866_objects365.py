@@ -3,15 +3,11 @@ _base_ = [
     "../base/semi_supervised_lvis_detection.py"
 ]
 
-CLASSES_FILE = "annotations/lvis_v1_tail_classes337.txt"
+CLASSES_FILE = "annotations/lvis_v1_head_classes866.txt"
 pretrained = "https://download.pytorch.org/models/resnet50-11ad3fa6.pth"
 
 detector = dict(
     type="DINO",
-    freeze_exceptions=[
-        "bbox_head.cls_branches",
-        "dn_query_generator.label_embedding"
-    ],
     num_queries=900,
     with_box_refine=True,
     as_two_stage=True,
@@ -26,7 +22,7 @@ detector = dict(
         depth=50,
         num_stages=4,
         out_indices=(1, 2, 3),
-        frozen_stages=4,
+        frozen_stages=1,
         norm_cfg=dict(type="BN", requires_grad=False),
         norm_eval=True,
         style="pytorch",
@@ -68,7 +64,7 @@ detector = dict(
         temperature=20),
     bbox_head=dict(
         type="DINOHead",
-        num_classes=337,
+        num_classes=866,
         sync_cls_avg_factor=True,
         loss_cls=dict(
             type="FocalLoss",
@@ -118,16 +114,20 @@ model = dict(
         min_pseudo_bbox_wh=(1e-2, 1e-2)),
     semi_test_cfg=dict(predict_on="teacher"))
 
-labeled_dataset = _base_.labeled_dataset
 unlabeled_dataset = _base_.unlabeled_dataset
+unlabeled_dataset.type = "Objects365V2Dataset"
+unlabeled_dataset.data_root = "data/objects365/"
+unlabeled_dataset.ann_file = "annotations/zhiyuan_objv2_train.json"
+unlabeled_dataset.data_prefix = dict(img="train/")
+labeled_dataset = _base_.labeled_dataset
 data_root = labeled_dataset.dataset.dataset.data_root
 METAINFO = dict(classes=data_root + CLASSES_FILE)
 labeled_dataset.dataset.dataset.metainfo = METAINFO
 
 train_dataloader = dict(
-    batch_size=6,
-    num_workers=2,
-    sampler=dict(batch_size=6, source_ratio=[2, 4]),
+    batch_size=8,
+    num_workers=4,
+    sampler=dict(batch_size=8, source_ratio=[4, 4]),
     dataset=dict(datasets=[labeled_dataset, unlabeled_dataset]))
 val_dataloader = dict(
     batch_size=2,
@@ -137,9 +137,9 @@ val_dataloader = dict(
 test_dataloader = val_dataloader
 
 # training schedule
-num_iters = 40000
+num_iters = 330000
 train_cfg = dict(
-    type="IterBasedTrainLoop", max_iters=num_iters, val_interval=5000)
+    type="IterBasedTrainLoop", max_iters=num_iters, val_interval=30000)
 val_cfg = dict(type="TeacherStudentValLoop")
 test_cfg = dict(type="TestLoop")
 
@@ -151,18 +151,31 @@ optim_wrapper = dict(
         lr=0.0001,
         weight_decay=0.0001),
     clip_grad=dict(max_norm=0.1, norm_type=2),
+    paramwise_cfg=dict(
+        custom_keys={
+            "backbone": dict(lr_mult=0.1),
+        }
+    )
 )
+param_scheduler = [
+    dict(
+        type="MultiStepLR",
+        begin=0,
+        end=num_iters,
+        by_epoch=False,
+        milestones=[300000],
+        gamma=0.1)
+]
 log_processor = dict(by_epoch=False)
 custom_hooks = [dict(type="MeanTeacherHook", momentum=0.0002, gamma=4)]
 default_hooks = dict(
     logger=dict(type="LoggerHook", interval=100, log_metric_by_epoch=False),
     checkpoint=dict(
         type="CheckpointHook",
-        interval=5000,
-        max_keep_ckpts=10,
+        interval=2000,
+        max_keep_ckpts=200,
         by_epoch=False,
     ),
 )
 resume = False
-load_from = "results/dino-resnet/mixpl_dino-4scale_r50_lvis_v1_head866/model_reset_remove.pth"
-work_dir = "work_dirs/dino-resnet/mixpl_dino-4scale_r50_lvis_v1_tail337/"
+work_dir = "work_dirs/mixpl-dino-resnet/mixpl_dino-4scale_r50_lvis_v1_head866_objects365/"

@@ -174,4 +174,4 @@ default_hooks = dict(
     ),
 )
 resume = False
-work_dir = "work_dirs/dino-resnet/mixpl_dino-4scale_r50_lvis_v1_head866/"
+work_dir = "work_dirs/mixpl-dino-resnet/mixpl_dino-4scale_r50_lvis_v1_head866/"

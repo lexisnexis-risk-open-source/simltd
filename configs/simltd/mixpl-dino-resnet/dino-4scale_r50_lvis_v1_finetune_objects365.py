@@ -1,13 +1,18 @@
 _base_ = [
     "../../../configs/_base_/default_runtime.py",
-    "../base/semi_supervised_lvis_detection.py"
+    "../base/supervised_lvis_detection.py"
 ]
 
-CLASSES_FILE = "annotations/lvis_v1_head_classes866.txt"
+CLASSES_FILE = "annotations/lvis_v1_all_classes1203.txt"
 pretrained = "https://download.pytorch.org/models/resnet50-11ad3fa6.pth"
 
-detector = dict(
+model = dict(
     type="DINO",
+    freeze_exceptions=[
+        "bbox_head.cls_branches",
+        "bbox_head.reg_branches",
+        "dn_query_generator.label_embedding"
+    ],
     num_queries=900,
     with_box_refine=True,
     as_two_stage=True,
@@ -22,7 +27,7 @@ detector = dict(
         depth=50,
         num_stages=4,
         out_indices=(1, 2, 3),
-        frozen_stages=1,
+        frozen_stages=4,
         norm_cfg=dict(type="BN", requires_grad=False),
         norm_eval=True,
         style="pytorch",
@@ -64,7 +69,7 @@ detector = dict(
         temperature=20),
     bbox_head=dict(
         type="DINOHead",
-        num_classes=866,
+        num_classes=1203,
         sync_cls_avg_factor=True,
         loss_cls=dict(
             type="FocalLoss",
@@ -90,45 +95,16 @@ detector = dict(
             ])),
     test_cfg=dict(max_per_img=300)) # LVIS allows up to 300
 
-model = dict(
-    type="MixPL",
-    detector=detector,
-    data_preprocessor=dict(
-        type="MultiBranchDataPreprocessor",
-        data_preprocessor=detector["data_preprocessor"]),
-    semi_train_cfg=dict(
-        least_num=1,
-        cache_size=8,
-        mixup=True,
-        mosaic=True,
-        mosaic_shape=[(400, 400), (800, 800)],
-        mosaic_weight=0.5,
-        erase=True,
-        erase_patches=(1, 20),
-        erase_ratio=(0, 0.1),
-        erase_thr=0.7,
-        cls_pseudo_thr=0.4,
-        freeze_teacher=True,
-        sup_weight=1.0,
-        unsup_weight=2.0,
-        min_pseudo_bbox_wh=(1e-2, 1e-2)),
-    semi_test_cfg=dict(predict_on="teacher"))
-
-unlabeled_dataset = _base_.unlabeled_dataset
-unlabeled_dataset.type = "Objects365V2Dataset"
-unlabeled_dataset.data_root = "data/objects365/"
-unlabeled_dataset.ann_file = "annotations/zhiyuan_objv2_train.json"
-unlabeled_dataset.data_prefix = dict(img="train/")
 labeled_dataset = _base_.labeled_dataset
 data_root = labeled_dataset.dataset.dataset.data_root
 METAINFO = dict(classes=data_root + CLASSES_FILE)
 labeled_dataset.dataset.dataset.metainfo = METAINFO
+labeled_dataset.dataset.dataset.ann_file = "annotations/lvis_v1_train_seed1@30shots.json"
 
 train_dataloader = dict(
-    batch_size=8,
-    num_workers=4,
-    sampler=dict(batch_size=8, source_ratio=[4, 4]),
-    dataset=dict(datasets=[labeled_dataset, unlabeled_dataset]))
+    batch_size=1,
+    num_workers=1,
+    dataset=labeled_dataset)
 val_dataloader = dict(
     batch_size=2,
     num_workers=2,
@@ -136,11 +112,10 @@ val_dataloader = dict(
 )
 test_dataloader = val_dataloader
 
-# training schedule
-num_iters = 330000
+num_iters = 50000
 train_cfg = dict(
-    type="IterBasedTrainLoop", max_iters=num_iters, val_interval=30000)
-val_cfg = dict(type="TeacherStudentValLoop")
+    type="IterBasedTrainLoop", max_iters=num_iters, val_interval=10000)
+val_cfg = dict(type="ValLoop")
 test_cfg = dict(type="TestLoop")
 
 # optimizer
@@ -148,14 +123,9 @@ optim_wrapper = dict(
     type="OptimWrapper",
     optimizer=dict(
         type="AdamW",
-        lr=0.0001,
+        lr=5e-06,
         weight_decay=0.0001),
     clip_grad=dict(max_norm=0.1, norm_type=2),
-    paramwise_cfg=dict(
-        custom_keys={
-            "backbone": dict(lr_mult=0.1),
-        }
-    )
 )
 param_scheduler = [
     dict(
@@ -163,19 +133,19 @@ param_scheduler = [
         begin=0,
         end=num_iters,
         by_epoch=False,
-        milestones=[300000],
+        milestones=[40000],
         gamma=0.1)
 ]
 log_processor = dict(by_epoch=False)
-custom_hooks = [dict(type="MeanTeacherHook", momentum=0.0002, gamma=4)]
 default_hooks = dict(
     logger=dict(type="LoggerHook", interval=100, log_metric_by_epoch=False),
     checkpoint=dict(
         type="CheckpointHook",
         interval=2000,
-        max_keep_ckpts=200,
+        max_keep_ckpts=1,
         by_epoch=False,
     ),
 )
 resume = False
-work_dir = "work_dirs/dino-resnet/mixpl_dino-4scale_r50_lvis_v1_head866_objects365/"
+load_from = "results/mixpl-dino-resnet/mixpl_dino-4scale_r50_lvis_v1_head866_objects365/model_reset_combine.pth"
+work_dir = "work_dirs/mixpl-dino-resnet/dino-4scale_r50_lvis_v1_finetune_objects365/30shots/seed1/"
