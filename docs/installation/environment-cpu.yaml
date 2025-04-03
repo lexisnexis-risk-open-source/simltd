@@ -1,0 +1,22 @@
+name: simltd-cpu
+channels:
+  - pytorch
+  - conda-forge
+dependencies:
+  - python=3.10.13
+  - pytorch=2.1.2
+  - torchvision=0.16.2
+  - pip
+  - pip:
+    - setuptools==69.5.1
+    - torchaudio==2.1.2
+    - openmim
+    - mmengine>=0.7.1,<1.0.0
+    - mmcv-lite>=2.0.0rc4,<2.2.0
+    - lvis@git+https://github.com/lvis-dataset/lvis-api
+    - -r ../../requirements/build.txt
+    - -r ../../requirements/optional.txt
+    - -r ../../requirements/multimodal.txt
+    - -r ../../requirements/albu.txt
+    - -r ../../requirements/tracking.txt
+    - -e ../../.
