@@ -1,5 +1,7 @@
 # [SimLTD: Simple Supervised and Semi-Supervised Long-Tailed Object Detection](https://arxiv.org/abs/2412.20047)
 
+[![PWC](https://img.shields.io/endpoint.svg?url=https://paperswithcode.com/badge/simltd-simple-supervised-and-semi-supervised/object-detection-on-lvis-v1-0-val)](https://paperswithcode.com/sota/object-detection-on-lvis-v1-0-val?p=simltd-simple-supervised-and-semi-supervised)
+
 <p align="center">
   <img src="docs/assets/simltd.gif" width="100%" alt="simltd" /> 
 </p>
