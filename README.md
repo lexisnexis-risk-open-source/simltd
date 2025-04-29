@@ -1,5 +1,9 @@
 # [SimLTD: Simple Supervised and Semi-Supervised Long-Tailed Object Detection](https://arxiv.org/abs/2412.20047)
 
+<p align="center">
+  <img src="docs/assets/simltd.gif" width="100%" alt="simltd" /> 
+</p>
+
 ## Get Started
 1. Please refer to this [installation guide](https://github.com/lexisnexis-risk-open-source/simltd/blob/main/docs/installation/).
 2. Reproduce the results in Table 2 of our [CVPR 2025 paper](https://arxiv.org/abs/2412.20047) using the provided [reference configs](https://github.com/lexisnexis-risk-open-source/simltd/tree/main/configs/simltd).
