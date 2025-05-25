@@ -123,7 +123,7 @@ optim_wrapper = dict(
     type="OptimWrapper",
     optimizer=dict(
         type="AdamW",
-        lr=5e-06,
+        lr=1e-05,
         weight_decay=0.0001),
     clip_grad=dict(max_norm=0.1, norm_type=2),
 )
