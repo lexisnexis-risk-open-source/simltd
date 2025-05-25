@@ -1,49 +1,55 @@
 _base_ = [
     "../../../configs/_base_/default_runtime.py",
-    "../base/supervised_lvis_detection.py"
+    "../base/semi_supervised_lvis_detection.py"
 ]
 
-CLASSES_FILE = "annotations/lvis_v1_all_classes1203.txt"
-pretrained = "https://download.pytorch.org/models/resnet50-11ad3fa6.pth"
+CLASSES_FILE = "annotations/lvis_v1_head_classes866.txt"
+pretrained = "https://github.com/SwinTransformer/storage/releases/download/v1.0.0/swin_large_patch4_window12_384_22kto1k.pth"
 
-model = dict(
+num_levels = 5
+detector = dict(
     type="DINO",
-    freeze_exceptions=[
-        "bbox_head.cls_branches",
-        "bbox_head.reg_branches",
-        "dn_query_generator.label_embedding"
-    ],
     num_queries=900,
     with_box_refine=True,
     as_two_stage=True,
+    num_feature_levels=num_levels,
     data_preprocessor=dict(
         type="DetDataPreprocessor",
         mean=[123.675, 116.28, 103.53],
         std=[58.395, 57.12, 57.375],
         bgr_to_rgb=True,
         pad_size_divisor=1),
-    backbone=dict(
-        type="ResNet",
-        depth=50,
-        num_stages=4,
+     backbone=dict(
+        type="SwinTransformer",
+        frozen_stages=-1,
+        pretrain_img_size=384,
+        embed_dims=192,
+        depths=[2, 2, 18, 2],
+        num_heads=[6, 12, 24, 48],
+        window_size=12,
+        mlp_ratio=4,
+        qkv_bias=True,
+        qk_scale=None,
+        drop_rate=0.,
+        attn_drop_rate=0.,
+        drop_path_rate=0.2,
+        patch_norm=True,
         out_indices=(1, 2, 3),
-        frozen_stages=4,
-        norm_cfg=dict(type="BN", requires_grad=False),
-        norm_eval=True,
-        style="pytorch",
+        with_cp=True,
+        convert_weights=True,
         init_cfg=dict(type="Pretrained", checkpoint=pretrained)),
     neck=dict(
         type="ChannelMapper",
-        in_channels=[512, 1024, 2048],
+        in_channels=[384, 768, 1536],
         kernel_size=1,
         out_channels=256,
         act_cfg=None,
         norm_cfg=dict(type="GN", num_groups=32),
-        num_outs=4),
+        num_outs=num_levels),
     encoder=dict(
         num_layers=6,
         layer_cfg=dict(
-            self_attn_cfg=dict(embed_dims=256, num_levels=4,
+            self_attn_cfg=dict(embed_dims=256, num_levels=num_levels,
                                dropout=0.0),
             ffn_cfg=dict(
                 embed_dims=256,
@@ -55,7 +61,7 @@ model = dict(
         layer_cfg=dict(
             self_attn_cfg=dict(embed_dims=256, num_heads=8,
                                dropout=0.0),
-            cross_attn_cfg=dict(embed_dims=256, num_levels=4,
+            cross_attn_cfg=dict(embed_dims=256, num_levels=num_levels,
                                 dropout=0.0),
             ffn_cfg=dict(
                 embed_dims=256,
@@ -69,7 +75,7 @@ model = dict(
         temperature=20),
     bbox_head=dict(
         type="DINOHead",
-        num_classes=1203,
+        num_classes=866,
         sync_cls_avg_factor=True,
         loss_cls=dict(
             type="FocalLoss",
@@ -95,16 +101,41 @@ model = dict(
             ])),
     test_cfg=dict(max_per_img=300)) # LVIS allows up to 300
 
+model = dict(
+    type="MixPL",
+    detector=detector,
+    data_preprocessor=dict(
+        type="MultiBranchDataPreprocessor",
+        data_preprocessor=detector["data_preprocessor"]),
+    semi_train_cfg=dict(
+        least_num=1,
+        cache_size=8,
+        mixup=True,
+        mosaic=True,
+        mosaic_shape=[(400, 400), (800, 800)],
+        mosaic_weight=0.5,
+        erase=True,
+        erase_patches=(1, 20),
+        erase_ratio=(0, 0.1),
+        erase_thr=0.7,
+        cls_pseudo_thr=0.4,
+        freeze_teacher=True,
+        sup_weight=1.0,
+        unsup_weight=2.0,
+        min_pseudo_bbox_wh=(1e-2, 1e-2)),
+    semi_test_cfg=dict(predict_on="teacher"))
+
 labeled_dataset = _base_.labeled_dataset
+unlabeled_dataset = _base_.unlabeled_dataset
 data_root = labeled_dataset.dataset.dataset.data_root
 METAINFO = dict(classes=data_root + CLASSES_FILE)
 labeled_dataset.dataset.dataset.metainfo = METAINFO
-labeled_dataset.dataset.dataset.ann_file = "annotations/lvis_v1_train_seed1@30shots.json"
 
 train_dataloader = dict(
-    batch_size=1,
-    num_workers=1,
-    dataset=labeled_dataset)
+    batch_size=6,
+    num_workers=4,
+    sampler=dict(batch_size=6, source_ratio=[2, 4]),
+    dataset=dict(datasets=[labeled_dataset, unlabeled_dataset]))
 val_dataloader = dict(
     batch_size=2,
     num_workers=2,
@@ -112,10 +143,11 @@ val_dataloader = dict(
 )
 test_dataloader = val_dataloader
 
-num_iters = 50000
+# training schedule
+num_iters = 300000
 train_cfg = dict(
-    type="IterBasedTrainLoop", max_iters=num_iters, val_interval=10000)
-val_cfg = dict(type="ValLoop")
+    type="IterBasedTrainLoop", max_iters=num_iters, val_interval=30000)
+val_cfg = dict(type="TeacherStudentValLoop")
 test_cfg = dict(type="TestLoop")
 
 # optimizer
@@ -123,29 +155,37 @@ optim_wrapper = dict(
     type="OptimWrapper",
     optimizer=dict(
         type="AdamW",
-        lr=1e-05,
+        lr=0.0001,
         weight_decay=0.0001),
     clip_grad=dict(max_norm=0.1, norm_type=2),
+    paramwise_cfg=dict(
+        custom_keys={
+            "backbone": dict(lr_mult=0.1),
+        }
+    )
 )
 param_scheduler = [
+    dict(
+        type="LinearLR", start_factor=0.001, by_epoch=False, begin=0,
+        end=1000),
     dict(
         type="MultiStepLR",
         begin=0,
         end=num_iters,
         by_epoch=False,
-        milestones=[40000],
+        milestones=[270000],
         gamma=0.1)
 ]
 log_processor = dict(by_epoch=False)
+custom_hooks = [dict(type="MeanTeacherHook", momentum=0.0002, gamma=4)]
 default_hooks = dict(
     logger=dict(type="LoggerHook", interval=100, log_metric_by_epoch=False),
     checkpoint=dict(
         type="CheckpointHook",
         interval=2000,
-        max_keep_ckpts=1,
+        max_keep_ckpts=300,
         by_epoch=False,
     ),
 )
 resume = False
-load_from = "results/mixpl-dino-resnet/mixpl_dino-4scale_r50_lvis_v1_head866_objects365/model_reset_combine.pth"
-work_dir = "work_dirs/mixpl-dino-resnet/dino-4scale_r50_lvis_v1_finetune_objects365/30shots/seed1/"
+work_dir = "work_dirs/mixpl-dino-swin/mixpl_dino-5scale_swin-l_lvis_v1_head866/"

@@ -125,9 +125,9 @@ METAINFO = dict(classes=data_root + CLASSES_FILE)
 labeled_dataset.dataset.dataset.metainfo = METAINFO
 
 train_dataloader = dict(
-    batch_size=8,
+    batch_size=6,
     num_workers=4,
-    sampler=dict(batch_size=8, source_ratio=[4, 4]),
+    sampler=dict(batch_size=6, source_ratio=[2, 4]),
     dataset=dict(datasets=[labeled_dataset, unlabeled_dataset]))
 val_dataloader = dict(
     batch_size=2,

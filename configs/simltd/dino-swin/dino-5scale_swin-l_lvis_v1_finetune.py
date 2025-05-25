@@ -4,8 +4,9 @@ _base_ = [
 ]
 
 CLASSES_FILE = "annotations/lvis_v1_all_classes1203.txt"
-pretrained = "https://download.pytorch.org/models/resnet50-11ad3fa6.pth"
+pretrained = "https://github.com/SwinTransformer/storage/releases/download/v1.0.0/swin_large_patch4_window12_384_22kto1k.pth"
 
+num_levels = 5
 model = dict(
     type="DINO",
     freeze_exceptions=[
@@ -16,6 +17,7 @@ model = dict(
     num_queries=900,
     with_box_refine=True,
     as_two_stage=True,
+    num_feature_levels=num_levels,
     data_preprocessor=dict(
         type="DetDataPreprocessor",
         mean=[123.675, 116.28, 103.53],
@@ -23,27 +25,36 @@ model = dict(
         bgr_to_rgb=True,
         pad_size_divisor=1),
     backbone=dict(
-        type="ResNet",
-        depth=50,
-        num_stages=4,
-        out_indices=(1, 2, 3),
+        type="SwinTransformer",
         frozen_stages=4,
-        norm_cfg=dict(type="BN", requires_grad=False),
-        norm_eval=True,
-        style="pytorch",
+        pretrain_img_size=384,
+        embed_dims=192,
+        depths=[2, 2, 18, 2],
+        num_heads=[6, 12, 24, 48],
+        window_size=12,
+        mlp_ratio=4,
+        qkv_bias=True,
+        qk_scale=None,
+        drop_rate=0.,
+        attn_drop_rate=0.,
+        drop_path_rate=0.2,
+        patch_norm=True,
+        out_indices=(0, 1, 2, 3),
+        with_cp=False,
+        convert_weights=True,
         init_cfg=dict(type="Pretrained", checkpoint=pretrained)),
     neck=dict(
         type="ChannelMapper",
-        in_channels=[512, 1024, 2048],
+        in_channels=[192, 384, 768, 1536],
         kernel_size=1,
         out_channels=256,
         act_cfg=None,
         norm_cfg=dict(type="GN", num_groups=32),
-        num_outs=4),
+        num_outs=num_levels),
     encoder=dict(
         num_layers=6,
         layer_cfg=dict(
-            self_attn_cfg=dict(embed_dims=256, num_levels=4,
+            self_attn_cfg=dict(embed_dims=256, num_levels=num_levels,
                                dropout=0.0),
             ffn_cfg=dict(
                 embed_dims=256,
@@ -55,7 +66,7 @@ model = dict(
         layer_cfg=dict(
             self_attn_cfg=dict(embed_dims=256, num_heads=8,
                                dropout=0.0),
-            cross_attn_cfg=dict(embed_dims=256, num_levels=4,
+            cross_attn_cfg=dict(embed_dims=256, num_levels=num_levels,
                                 dropout=0.0),
             ffn_cfg=dict(
                 embed_dims=256,
@@ -112,6 +123,7 @@ val_dataloader = dict(
 )
 test_dataloader = val_dataloader
 
+# training schedule
 num_iters = 50000
 train_cfg = dict(
     type="IterBasedTrainLoop", max_iters=num_iters, val_interval=10000)
@@ -147,5 +159,5 @@ default_hooks = dict(
     ),
 )
 resume = False
-load_from = "results/mixpl-dino-resnet/mixpl_dino-4scale_r50_lvis_v1_head866_objects365/model_reset_combine.pth"
-work_dir = "work_dirs/mixpl-dino-resnet/dino-4scale_r50_lvis_v1_finetune_objects365/30shots/seed1/"
+load_from = "results/dino-swin/dino-5scale_swin-l_lvis_v1_head866/model_reset_combine.pth"
+work_dir = "work_dirs/dino-swin/dino-5scale_swin-l_lvis_v1_finetune/30shots/seed1/"

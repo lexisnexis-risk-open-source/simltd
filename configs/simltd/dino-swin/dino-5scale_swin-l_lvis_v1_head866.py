@@ -3,19 +3,16 @@ _base_ = [
     "../base/supervised_lvis_detection.py"
 ]
 
-CLASSES_FILE = "annotations/lvis_v1_all_classes1203.txt"
-pretrained = "https://download.pytorch.org/models/resnet50-11ad3fa6.pth"
+CLASSES_FILE = "annotations/lvis_v1_head_classes866.txt"
+pretrained = "https://github.com/SwinTransformer/storage/releases/download/v1.0.0/swin_large_patch4_window12_384_22kto1k.pth"
 
+num_levels = 5
 model = dict(
     type="DINO",
-    freeze_exceptions=[
-        "bbox_head.cls_branches",
-        "bbox_head.reg_branches",
-        "dn_query_generator.label_embedding"
-    ],
     num_queries=900,
     with_box_refine=True,
     as_two_stage=True,
+    num_feature_levels=num_levels,
     data_preprocessor=dict(
         type="DetDataPreprocessor",
         mean=[123.675, 116.28, 103.53],
@@ -23,27 +20,36 @@ model = dict(
         bgr_to_rgb=True,
         pad_size_divisor=1),
     backbone=dict(
-        type="ResNet",
-        depth=50,
-        num_stages=4,
-        out_indices=(1, 2, 3),
-        frozen_stages=4,
-        norm_cfg=dict(type="BN", requires_grad=False),
-        norm_eval=True,
-        style="pytorch",
+        type="SwinTransformer",
+        frozen_stages=-1,
+        pretrain_img_size=384,
+        embed_dims=192,
+        depths=[2, 2, 18, 2],
+        num_heads=[6, 12, 24, 48],
+        window_size=12,
+        mlp_ratio=4,
+        qkv_bias=True,
+        qk_scale=None,
+        drop_rate=0.,
+        attn_drop_rate=0.,
+        drop_path_rate=0.2,
+        patch_norm=True,
+        out_indices=(0, 1, 2, 3),
+        with_cp=True,
+        convert_weights=True,
         init_cfg=dict(type="Pretrained", checkpoint=pretrained)),
     neck=dict(
         type="ChannelMapper",
-        in_channels=[512, 1024, 2048],
+        in_channels=[192, 384, 768, 1536],
         kernel_size=1,
         out_channels=256,
         act_cfg=None,
         norm_cfg=dict(type="GN", num_groups=32),
-        num_outs=4),
+        num_outs=num_levels),
     encoder=dict(
         num_layers=6,
         layer_cfg=dict(
-            self_attn_cfg=dict(embed_dims=256, num_levels=4,
+            self_attn_cfg=dict(embed_dims=256, num_levels=num_levels,
                                dropout=0.0),
             ffn_cfg=dict(
                 embed_dims=256,
@@ -55,7 +61,7 @@ model = dict(
         layer_cfg=dict(
             self_attn_cfg=dict(embed_dims=256, num_heads=8,
                                dropout=0.0),
-            cross_attn_cfg=dict(embed_dims=256, num_levels=4,
+            cross_attn_cfg=dict(embed_dims=256, num_levels=num_levels,
                                 dropout=0.0),
             ffn_cfg=dict(
                 embed_dims=256,
@@ -69,7 +75,7 @@ model = dict(
         temperature=20),
     bbox_head=dict(
         type="DINOHead",
-        num_classes=1203,
+        num_classes=866,
         sync_cls_avg_factor=True,
         loss_cls=dict(
             type="FocalLoss",
@@ -99,11 +105,10 @@ labeled_dataset = _base_.labeled_dataset
 data_root = labeled_dataset.dataset.dataset.data_root
 METAINFO = dict(classes=data_root + CLASSES_FILE)
 labeled_dataset.dataset.dataset.metainfo = METAINFO
-labeled_dataset.dataset.dataset.ann_file = "annotations/lvis_v1_train_seed1@30shots.json"
 
 train_dataloader = dict(
-    batch_size=1,
-    num_workers=1,
+    batch_size=2,
+    num_workers=2,
     dataset=labeled_dataset)
 val_dataloader = dict(
     batch_size=2,
@@ -112,9 +117,10 @@ val_dataloader = dict(
 )
 test_dataloader = val_dataloader
 
-num_iters = 50000
+# training schedule
+num_iters = 200000
 train_cfg = dict(
-    type="IterBasedTrainLoop", max_iters=num_iters, val_interval=10000)
+    type="IterBasedTrainLoop", max_iters=num_iters, val_interval=20000)
 val_cfg = dict(type="ValLoop")
 test_cfg = dict(type="TestLoop")
 
@@ -123,17 +129,25 @@ optim_wrapper = dict(
     type="OptimWrapper",
     optimizer=dict(
         type="AdamW",
-        lr=1e-05,
+        lr=0.0001,
         weight_decay=0.0001),
     clip_grad=dict(max_norm=0.1, norm_type=2),
+    paramwise_cfg=dict(
+        custom_keys={
+            "backbone": dict(lr_mult=0.1),
+        }
+    )
 )
 param_scheduler = [
+    dict(
+        type="LinearLR", start_factor=0.001, by_epoch=False, begin=0,
+        end=1000),
     dict(
         type="MultiStepLR",
         begin=0,
         end=num_iters,
         by_epoch=False,
-        milestones=[40000],
+        milestones=[180000],
         gamma=0.1)
 ]
 log_processor = dict(by_epoch=False)
@@ -142,10 +156,9 @@ default_hooks = dict(
     checkpoint=dict(
         type="CheckpointHook",
         interval=2000,
-        max_keep_ckpts=1,
+        max_keep_ckpts=200,
         by_epoch=False,
     ),
 )
 resume = False
-load_from = "results/mixpl-dino-resnet/mixpl_dino-4scale_r50_lvis_v1_head866_objects365/model_reset_combine.pth"
-work_dir = "work_dirs/mixpl-dino-resnet/dino-4scale_r50_lvis_v1_finetune_objects365/30shots/seed1/"
+work_dir = "work_dirs/dino-swin/dino-5scale_swin-l_lvis_v1_head866/"
